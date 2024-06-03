@@ -1,0 +1,38 @@
+pipeline {
+    agent any 
+    tools {
+        maven "maven"
+    }
+    environment {
+         GOOGLE_CREDENTIALS = credentials('json') // manage jenkins -> credential -> king secrete text -> paste SA.Json.key
+    }
+    
+    stages {
+        stage('checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/SaravanaNani/terraform-ubuntu-desk-pro.git'
+            }
+        }
+
+        stage ('init') {
+            steps{
+                sh 'terraform init'
+            }
+        }
+        stage ('validate') {
+            steps{
+                sh 'terraform validate'
+            }
+        }
+        stage ('plan'){
+            steps {
+                sh 'terraform plan'
+            }
+        }
+        stage ('action') {
+            steps{
+                sh 'terraform $action --auto-approve'
+            }
+        }
+    }
+}
