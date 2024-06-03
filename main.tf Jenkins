@@ -104,5 +104,10 @@ metadata_startup_script = <<-EOF
     sudo sed -i '22s/^#//' /etc/ansible/ansible.cfg
     # Generate SSH key pair
     ssh-keygen -t rsa -b 2048 -f /root/.ssh/id_rsa -N ""
+    # Copy the public key to a directory accessible by Jenkins
+    sudo mkdir -p /var/lib/jenkins/.ssh
+    sudo cp /root/.ssh/id_rsa.pub /var/lib/jenkins/.ssh/id_rsa.pub
+    sudo chown jenkins:jenkins /var/lib/jenkins/.ssh/id_rsa.pub
+    sudo chmod 644 /var/lib/jenkins/.ssh/id_rsa.pub
   EOF
 }
