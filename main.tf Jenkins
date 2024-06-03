@@ -1,0 +1,108 @@
+provider "google" {
+  project     = "saravana95"
+  region      = "us-central1"
+}
+locals {
+  env = "jenkins"
+}
+resource "google_compute_network" "custom_network" {
+  name                    = "${local.env}-network"
+  auto_create_subnetworks = false
+}
+
+resource "google_compute_subnetwork" "custom_subnet" {
+  name          = "${local.env}-subnet-1"
+  region        = "us-west1"  # Specify the same region as the VPC
+  network       = google_compute_network.custom_network.self_link
+  ip_cidr_range = "10.0.1.0/24"  # Specify the CIDR range for your subnets
+}
+
+resource "google_compute_firewall" "allow_firewall" {
+  name    = "${local.env}-allow-8080"
+  network = google_compute_network.custom_network.self_link
+  direction = "INGRESS"
+  priority = 1000
+  
+  allow {
+    protocol = "all"
+  }
+
+  source_ranges = ["0.0.0.0/0"]  # Allow traffic from any source
+  target_tags = ["jenkins"]
+}
+
+
+# Create a Google Compute Engine instance
+resource "google_compute_instance" "my_instance" {
+  name         = "${local.env}"
+  machine_type = "n1-standard-1"
+  zone         = "us-west1-a"
+
+  boot_disk {
+    auto_delete = true
+
+    initialize_params {
+      image =  "projects/ubuntu-os-cloud/global/images/ubuntu-2004-focal-v20240519"      
+      size = 20
+      type = "pd-balanced"
+    }
+  }
+
+network_interface {
+    network = google_compute_network.custom_network.self_link
+    subnetwork = google_compute_subnetwork.custom_subnet.self_link
+ 
+    access_config {}
+}
+
+service_account {
+    email  = "default"
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+  }
+
+
+tags = ["jenkins"]
+
+metadata_startup_script = <<-EOF
+  #! /bin/bash
+    sudo apt-get update
+    sudo apt install git -y
+    sudo apt install -y openjdk-17-jre wget vim
+
+    # Install Jenkins
+    curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee \
+    /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+    echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
+    https://pkg.jenkins.io/debian-stable binary/ | sudo tee \
+    /etc/apt/sources.list.d/jenkins.list > /dev/null
+    sudo apt-get update
+    sudo apt-get install jenkins -y
+    sudo systemctl start jenkins
+    sudo systemctl enable jenkins
+    # Install Maven
+    wget https://apache.osuosl.org/maven/maven-3/3.9.5/binaries/apache-maven-3.9.5-bin.tar.gz
+    tar xzvf apache-maven-3.9.5-bin.tar.gz
+    sudo mv apache-maven-3.9.5 /opt
+    # Set environment variables
+    echo 'export M2_HOME=/opt/apache-maven-3.9.5' >> ~/.bashrc
+    echo 'export PATH=$M2_HOME/bin:$PATH' >> ~/.bashrc
+    source ~/.bashrc
+    # Install Ansible
+    sudo apt-get update
+    sudo apt-get install -y software-properties-common
+    sudo add-apt-repository --yes --update ppa:ansible/ansible
+    sudo apt-get install -y ansible
+    
+    sudo apt-get install -y openssh-server ansible
+    sudo hostnamectl set-hostname master
+    echo 'root:${var.master_password}' | sudo chpasswd
+    sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+    sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+    sudo systemctl restart sshd
+    # Modify /etc/ansible/ansible.cfg
+    sudo sed -i '14s/^#//' /etc/ansible/ansible.cfg
+    sudo sed -i '22s/^#//' /etc/ansible/ansible.cfg
+    # Generate SSH key pair
+    ssh-keygen -t rsa -b 2048 -f /root/.ssh/id_rsa -N ""
+  EOF
+}
