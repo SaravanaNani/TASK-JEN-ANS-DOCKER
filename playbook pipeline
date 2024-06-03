@@ -1,0 +1,21 @@
+pipeline {
+    agent any 
+    tools {
+        maven "maven"
+    }
+    // environment {
+    //     MY_PASSWORD =credentials('jenkins')
+    // }
+    stages {
+        // stage('passwd'){
+        //     steps{
+        //         sh 'echo $MY_PASSWORD'
+        //     }
+        // }
+        stage('ansible deployment') {
+            steps {
+                ansiblePlaybook credentialsId: 'ansiblee', disableHostKeyChecking: true, installation: 'ansible-path', inventory: '/etc/ansible/hosts', playbook: '/etc/ansible/playbook.yml', vaultTmpPath: ''
+            }
+        }
+    }
+}
