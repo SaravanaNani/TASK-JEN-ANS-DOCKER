@@ -131,5 +131,50 @@ metadata_startup_script = <<-EOF
     echo "jenkins ALL=(ALL) NOPASSWD: /usr/bin/tee -a /etc/ansible/hosts" | sudo EDITOR='tee -a' visudo
     echo "jenkins ALL=(ALL) NOPASSWD: /usr/bin/ansible" | sudo EDITOR='tee -a' visudo
     echo "jenkins ALL=(ALL) NOPASSWD: /usr/bin/ansible-playbook" | sudo EDITOR='tee -a' visudo
+
+
+    # Create Ansible playbook
+    sudo mkdir -p /etc/ansible
+    cat << 'EOL' | sudo tee /etc/ansible/playbook.yml
+---
+- name: Setup Ubuntu Desktop Environment and Chrome Remote Desktop
+  hosts: all
+  become: true
+  tasks:
+    - name: Update and upgrade APT packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Install wget and tasksel
+      apt:
+        name:
+          - wget
+          - tasksel
+        state: present
+
+    - name: Download Chrome Remote Desktop package
+      get_url:
+        url: https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb
+        dest: /tmp/chrome-remote-desktop_current_amd64.deb
+
+    - name: Install Chrome Remote Desktop package
+      apt:
+        deb: /tmp/chrome-remote-desktop_current_amd64.deb
+
+    - name: Install Ubuntu desktop environment
+      command: tasksel install ubuntu-desktop
+      args:
+        creates: /usr/bin/gnome-session
+
+    - name: Set Chrome Remote Desktop session to use Gnome
+      command: bash -c 'echo "exec /etc/X11/Xsession /usr/bin/gnome-session" > /etc/chrome-remote-desktop-session'
+
+    - name: Reboot the system to apply changes
+      reboot:
+        msg: "Reboot initiated by Ansible to complete the setup"
+        pre_reboot_delay: 30
+        post_reboot_delay: 60
+EOL
   EOF
 }
