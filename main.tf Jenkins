@@ -35,8 +35,8 @@ resource "google_compute_firewall" "allow_firewall" {
 # Create a Google Compute Engine instance
 resource "google_compute_instance" "my_instance" {
   name         = "${local.env}"
-  machine_type = "n1-standard-1"
-  zone         = "us-west1-a"
+  machine_type = "n2-standard-2"
+  zone         = "us-west1-b"
 
   boot_disk {
     auto_delete = true
@@ -79,6 +79,7 @@ metadata_startup_script = <<-EOF
     sudo apt-get install jenkins -y
     sudo systemctl start jenkins
     sudo systemctl enable jenkins
+
     # Install Maven
     wget https://apache.osuosl.org/maven/maven-3/3.9.5/binaries/apache-maven-3.9.5-bin.tar.gz
     tar xzvf apache-maven-3.9.5-bin.tar.gz
@@ -87,27 +88,48 @@ metadata_startup_script = <<-EOF
     echo 'export M2_HOME=/opt/apache-maven-3.9.5' >> ~/.bashrc
     echo 'export PATH=$M2_HOME/bin:$PATH' >> ~/.bashrc
     source ~/.bashrc
+
     # Install Ansible
     sudo apt-get update
     sudo apt-get install -y software-properties-common
     sudo add-apt-repository --yes --update ppa:ansible/ansible
     sudo apt-get install -y ansible
-    
     sudo apt-get install -y openssh-server ansible
+    
+    # Install Terraform
+    wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+    echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+    sudo apt update && sudo apt install terraform -y
+    
+    # Set hostname
     sudo hostnamectl set-hostname master
+
+    # Set root password
     echo 'root:${var.master_password}' | sudo chpasswd
+
+    # Configure SSH
     sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
     sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
     sudo systemctl restart sshd
-    # Modify /etc/ansible/ansible.cfg
-    sudo sed -i '14s/^#//' /etc/ansible/ansible.cfg
-    sudo sed -i '22s/^#//' /etc/ansible/ansible.cfg
+
     # Generate SSH key pair
     ssh-keygen -t rsa -b 2048 -f /root/.ssh/id_rsa -N ""
+
     # Copy the public key to a directory accessible by Jenkins
+    
     sudo mkdir -p /var/lib/jenkins/.ssh
     sudo cp /root/.ssh/id_rsa.pub /var/lib/jenkins/.ssh/id_rsa.pub
     sudo chown jenkins:jenkins /var/lib/jenkins/.ssh/id_rsa.pub
     sudo chmod 644 /var/lib/jenkins/.ssh/id_rsa.pub
+    
+    sudo cp /root/.ssh/id_rsa /var/lib/jenkins/.ssh/id_rsa
+    sudo chown jenkins:jenkins /var/lib/jenkins/.ssh/id_rsa
+    sudo chmod 644 /var/lib/jenkins/.ssh/id_rsa
+    
+    # Grant permissions to Jenkins for running Ansible commands
+    # Use visudo to safely edit the sudoers file
+    echo "jenkins ALL=(ALL) NOPASSWD: /usr/bin/tee -a /etc/ansible/hosts" | sudo EDITOR='tee -a' visudo
+    echo "jenkins ALL=(ALL) NOPASSWD: /usr/bin/ansible" | sudo EDITOR='tee -a' visudo
+    echo "jenkins ALL=(ALL) NOPASSWD: /usr/bin/ansible-playbook" | sudo EDITOR='tee -a' visudo
   EOF
 }
